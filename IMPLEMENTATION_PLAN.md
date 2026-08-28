@@ -1,17 +1,15 @@
-# Implementation Plan - MEM-1
-**Goal:** Scaffold a Vite + React + Tailwind app with routing (Home/Gallery/Editor), responsive layout, header/footer, hero, and dark/light theme toggle.
+# Implementation Plan - MEM-2
+**Goal:** Replace the placeholder Gallery with a live Imgflip API integration — gallery grid, search/filter, skeleton loaders, error/empty states, and localStorage caching.
 
-**Context:** Empty repo. Issue asks for Vite + Tailwind setup, modern UI shell, routing, dark/light, Lighthouse >90.
+**Context:** Issue MEM-2. Fetch from `https://api.imgflip.com/get_memes`, render a responsive meme gallery with search/filter, handle loading/error/empty, and cache the result in localStorage.
 
 **Steps:**
-1. Init Vite (React + TypeScript) project structure manually in /work.
-2. Add Tailwind v3 (PostCSS) + dark mode class strategy.
-3. Add React Router with Home, Gallery, Editor pages.
-4. Build Header (logo + nav + theme toggle), Footer, Hero on Home.
-5. Add minimal Gallery grid and Editor placeholder.
-6. Update package.json scripts: dev, build, preview.
-7. Verify `npm run dev` starts and `npm run build` succeeds.
+1. Add `src/api/imgflip.ts` with `fetchMemes()` (network + localStorage cache with TTL).
+2. Build a `useMemes` hook (`src/hooks/useMemes.ts`) returning `{ memes, status, error, reload }`.
+3. Create `MemeCard`, `MemeGridSkeleton`, and `EmptyState` / `ErrorState` components.
+4. Rewrite `src/pages/Gallery.tsx` to fetch, render the grid, and host the search input + status UI.
+5. Update `IMPLEMENTATION_PLAN.md` to MEM-2 and verify `npm run build`.
 
-**Files to change:** package.json, vite.config.ts, tsconfig.json, index.html, src/main.tsx, src/App.tsx, src/index.css, src/components/*, src/pages/*, tailwind.config.js, postcss.config.js.
+**Files to change:** IMPLEMENTATION_PLAN.md, src/api/imgflip.ts (new), src/hooks/useMemes.ts (new), src/components/MemeCard.tsx (new), src/components/MemeGridSkeleton.tsx (new), src/components/EmptyState.tsx (new), src/pages/Gallery.tsx.
 
-**Risks/Tests:** Build must succeed. Tailwind must compile. Routes resolve. Dark/light toggle persists via class on `<html>`. No actual Lighthouse run available; ensure semantic HTML, no large deps.
+**Risks/Tests:** Build must succeed. Manual check of empty/error/loading states by toggling network/cache. Skeleton shown while request is in flight; cached payload used on subsequent loads.
