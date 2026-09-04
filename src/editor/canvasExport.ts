@@ -19,6 +19,11 @@ export type ExportResult = {
   blob: Blob
 }
 
+// Returns true if the given CSS color value is a real, visible color we
+// should actually paint with. Lets the editor support "outline only" and
+// "highlight only" styles where the fill or stroke is intentionally
+// transparent — without this guard the canvas would render the
+// CSS-default black and ruin the effect.
 function isOpaqueColor(value: string | undefined): boolean {
   if (!value) return false
   if (value === '#00000000' || value === 'transparent') return false
