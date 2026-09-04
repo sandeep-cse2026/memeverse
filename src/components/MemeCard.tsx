@@ -12,7 +12,7 @@ export default function MemeCard({ meme }: Props) {
   const [failed, setFailed] = useState(false)
 
   return (
-    <li className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+    <li className="group mem-rise overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
       <Link
         to="/editor"
         state={{ templateId: meme.id, templateUrl: meme.url, templateName: meme.name }}

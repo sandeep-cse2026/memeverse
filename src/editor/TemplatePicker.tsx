@@ -12,9 +12,10 @@ type Props = {
   reload: () => void
   selected: Meme | null
   onSelect: (meme: Meme | null) => void
+  recents: string[]
 }
 
-export default function TemplatePicker({ memes, status, error, reload, selected, onSelect }: Props) {
+export default function TemplatePicker({ memes, status, error, reload, selected, onSelect, recents }: Props) {
   const [query, setQuery] = useState('')
 
   const filtered = useMemo(() => {
@@ -22,6 +23,12 @@ export default function TemplatePicker({ memes, status, error, reload, selected,
     if (!q) return memes.slice(0, 24)
     return memes.filter((m) => m.name.toLowerCase().includes(q)).slice(0, 60)
   }, [memes, query])
+
+  const recentMemes = useMemo(() => {
+    if (!recents.length) return []
+    const map = new Map(memes.map((m) => [m.id, m]))
+    return recents.map((id) => map.get(id)).filter((m): m is Meme => Boolean(m))
+  }, [memes, recents])
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -31,6 +38,43 @@ export default function TemplatePicker({ memes, status, error, reload, selected,
           Refresh
         </button>
       </header>
+
+      {recentMemes.length > 0 && !query && (
+        <section aria-label="Recent templates" className="mb-4">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Recent
+          </h3>
+          <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {recentMemes.map((meme) => {
+              const isActive = selected?.id === meme.id
+              return (
+                <li key={`recent-${meme.id}`}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(meme)}
+                    title={`Recent: ${meme.name}`}
+                    className={`group block w-full overflow-hidden rounded-lg border transition ${
+                      isActive
+                        ? 'border-indigo-500 ring-2 ring-indigo-500/30'
+                        : 'border-slate-200 hover:border-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    <div className="relative aspect-[4/3] w-full bg-slate-100 dark:bg-slate-800">
+                      <img
+                        src={meme.url}
+                        alt={meme.name}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
       <input
         type="search"
         value={query}

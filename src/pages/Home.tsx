@@ -1,6 +1,12 @@
 import { Link } from 'react-router-dom'
+import { useFavorites } from '../hooks/useFavorites'
+import { useRecentTemplates } from '../hooks/useRecentTemplates'
 
 export default function Home() {
+  const { favorites } = useFavorites()
+  const { recents } = useRecentTemplates()
+  const hasHistory = favorites.length > 0 || recents.length > 0
+
   return (
     <section>
       <div className="container-page py-20 sm:py-28 lg:py-32">
@@ -18,6 +24,13 @@ export default function Home() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link to="/editor" className="btn-primary">Start creating</Link>
             <Link to="/gallery" className="btn-ghost">Browse gallery</Link>
+            {hasHistory && (
+              <Link to="/favorites" className="btn-ghost">
+                {favorites.length > 0
+                  ? `Your ${favorites.length} favorite${favorites.length === 1 ? '' : 's'}`
+                  : 'Jump back in'}
+              </Link>
+            )}
           </div>
         </div>
 

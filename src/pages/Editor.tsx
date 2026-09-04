@@ -8,6 +8,7 @@ import TextBoxControls from '../editor/TextBoxControls'
 import TemplatePicker from '../editor/TemplatePicker'
 import ShareMenu from '../editor/ShareMenu'
 import { exportMemeToPng, triggerDownload } from '../editor/canvasExport'
+import { useRecentTemplates } from '../hooks/useRecentTemplates'
 import type { Meme } from '../api/imgflip'
 
 const STORAGE_KEY = 'mem:editor:draft:v1'
@@ -46,6 +47,7 @@ function getTemplateIdFromQuery(): string | null {
 export default function Editor() {
   const { memes, status, error, fromCache, reload } = useMemes()
   const { isFavorite, toggle: toggleFavorite } = useFavorites()
+  const { recents, bump: bumpRecent } = useRecentTemplates()
   const location = useLocation()
   const initialTemplateId =
     (location.state as { templateId?: string } | null)?.templateId ??
@@ -61,9 +63,13 @@ export default function Editor() {
   const stageRef = useRef<HTMLDivElement | null>(null)
   const templateResolvedRef = useRef(false)
   const noticeTimerRef = useRef<number | null>(null)
+  const toastKeyRef = useRef(0)
+  const [toastKey, setToastKey] = useState(0)
 
   const flashNotice = useCallback((message: string) => {
     setNotice(message)
+    toastKeyRef.current += 1
+    setToastKey(toastKeyRef.current)
     if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
     noticeTimerRef.current = window.setTimeout(() => setNotice(null), 2400)
   }, [])
@@ -85,13 +91,14 @@ export default function Editor() {
       if (found) {
         setTemplate(found)
         setBoxes((prev) => (prev.length > 0 ? prev : defaultBoxesFor(found)))
+        bumpRecent(found.id)
       }
     } else if (template === null) {
       // No template requested and no template chosen — start blank by default.
       setBoxes((prev) => (prev.length > 0 ? prev : defaultBoxesFor(null)))
     }
     templateResolvedRef.current = true
-  }, [memes, initialTemplateId, draft?.templateId, template])
+  }, [memes, initialTemplateId, draft?.templateId, template, bumpRecent])
 
   // Persist a small draft so the user doesn't lose work on a refresh.
   useEffect(() => {
@@ -103,12 +110,13 @@ export default function Editor() {
       setTemplate(meme)
       if (meme) {
         setBoxes(defaultBoxesFor(meme))
+        bumpRecent(meme.id)
       } else {
         setBoxes(defaultBoxesFor(null))
       }
       setSelectedId(null)
     },
-    [],
+    [bumpRecent],
   )
 
   const updateBox = useCallback((id: string, patch: Partial<TextBox>) => {
@@ -175,12 +183,13 @@ export default function Editor() {
         fileBaseName: template?.name ?? 'meme',
       })
       triggerDownload(result.dataUrl, result.filename)
+      flashNotice('Saved! Your meme is on its way to your downloads.')
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Could not export PNG')
     } finally {
       setIsExporting(false)
     }
-  }, [boxes, template?.name, getStageImage])
+  }, [boxes, template?.name, getStageImage, flashNotice])
 
   const handleReset = useCallback(() => {
     setBoxes(defaultBoxesFor(template))
@@ -200,6 +209,41 @@ export default function Editor() {
   )
 
   const currentIsFavorite = template ? isFavorite(template.id) : false
+
+  const toggleCurrentFavorite = useCallback(() => {
+    if (!template) {
+      flashNotice('Pick a template first, then favorite it.')
+      return
+    }
+    toggleFavorite(template.id)
+    flashNotice(currentIsFavorite ? 'Removed from favorites.' : 'Saved to favorites.')
+  }, [template, toggleFavorite, currentIsFavorite, flashNotice])
+
+  // Keyboard shortcut: F toggles the favorite for the current template.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      // Don't fire while typing into a field.
+      const target = ev.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          target.isContentEditable
+        ) {
+          return
+        }
+      }
+      if (ev.key === 'f' || ev.key === 'F') {
+        if (ev.metaKey || ev.ctrlKey || ev.altKey) return
+        ev.preventDefault()
+        toggleCurrentFavorite()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleCurrentFavorite])
 
   return (
     <section className="container-page py-8">
@@ -224,11 +268,9 @@ export default function Editor() {
           {template && (
             <button
               type="button"
-              onClick={() => {
-                toggleFavorite(template.id)
-                flashNotice(currentIsFavorite ? 'Removed from favorites.' : 'Added to favorites.')
-              }}
+              onClick={toggleCurrentFavorite}
               aria-pressed={currentIsFavorite}
+              title="Toggle favorite (F)"
               className={`btn-ghost h-9 px-3 text-sm ${
                 currentIsFavorite
                   ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30'
@@ -249,6 +291,9 @@ export default function Editor() {
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
               </svg>
               {currentIsFavorite ? 'Favorited' : 'Favorite'}
+              <kbd className="ml-1.5 hidden rounded border border-slate-300 bg-slate-100 px-1 font-mono text-[10px] text-slate-500 sm:inline dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                F
+              </kbd>
             </button>
           )}
           <ShareMenu
@@ -271,18 +316,48 @@ export default function Editor() {
 
       {exportError && (
         <div
+          key={`err-${toastKey}`}
           role="alert"
-          className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+          className="mem-toast-in mb-4 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
         >
-          {exportError}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <span>{exportError}</span>
         </div>
       )}
       {notice && !exportError && (
         <div
+          key={`ok-${toastKey}`}
           role="status"
-          className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+          className="mem-toast-in mb-4 flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
         >
-          {notice}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
+          >
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          <span>{notice}</span>
         </div>
       )}
 
@@ -319,6 +394,7 @@ export default function Editor() {
             reload={reload}
             selected={template}
             onSelect={selectTemplate}
+            recents={recents}
           />
         </div>
       </div>

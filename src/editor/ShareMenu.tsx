@@ -97,7 +97,7 @@ export default function ShareMenu({ template, boxes, getStageImage, disabled, on
     const result = await nativeShare(built.blob, built.filename, `${template?.name ?? 'Meme'} — made with Mem`, shareUrl)
     setState((s) => ({ ...s, working: null }))
     if (result === 'shared') {
-      onNotice('Shared!')
+      onNotice('Shared! Off it goes 🚀')
       setState((s) => ({ ...s, open: false }))
     } else if (result === 'cancelled') {
       // No-op.
@@ -118,7 +118,7 @@ export default function ShareMenu({ template, boxes, getStageImage, disabled, on
     const ok = await copyImageBlobToClipboard(built.blob)
     setState((s) => ({ ...s, working: null }))
     if (ok) {
-      onNotice('Image copied to clipboard.')
+      onNotice('Image copied — paste it anywhere!')
       setState((s) => ({ ...s, open: false }))
     } else {
       onError("This browser can't copy images to the clipboard. Try sharing or downloading instead.")
@@ -130,7 +130,7 @@ export default function ShareMenu({ template, boxes, getStageImage, disabled, on
     const ok = await copyTextToClipboard(shareUrl)
     setState((s) => ({ ...s, working: null }))
     if (ok) {
-      onNotice('Link copied to clipboard.')
+      onNotice('Link copied — share it with a friend!')
       setState((s) => ({ ...s, open: false }))
     } else {
       onError('Could not copy the link to your clipboard.')
@@ -143,7 +143,7 @@ export default function ShareMenu({ template, boxes, getStageImage, disabled, on
     setState((s) => ({ ...s, working: null }))
     if (built) {
       triggerDownload(built.dataUrl, built.filename)
-      onNotice('Download started.')
+      onNotice('Downloaded! Check your folder.')
       setState((s) => ({ ...s, open: false }))
     }
   }, [build, onNotice])
