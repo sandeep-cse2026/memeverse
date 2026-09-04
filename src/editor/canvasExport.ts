@@ -11,6 +11,14 @@ export type ExportInput = {
   fileBaseName?: string
 }
 
+export type ExportResult = {
+  dataUrl: string
+  filename: string
+  width: number
+  height: number
+  blob: Blob
+}
+
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   if (!text) return ['']
   const paragraphs = text.split(/\n/)
@@ -69,12 +77,6 @@ function drawTextBox(
   const strokePx = (box.strokeWidth / 100) * Math.min(stageW, stageH) * 0.6
   ctx.lineWidth = Math.max(1, strokePx)
 
-  const xForAlign = (line: string) => {
-    if (box.align === 'left') return startX
-    if (box.align === 'right') return startX
-    return startX
-  }
-
   let y = startY - totalHeight / 2 + lineHeight / 2
   for (const line of lines) {
     if (line === '' && lines.length > 1) {
@@ -93,7 +95,7 @@ export async function exportMemeToPng({
   naturalHeight,
   boxes,
   fileBaseName = 'meme',
-}: ExportInput): Promise<{ dataUrl: string; filename: string }> {
+}: ExportInput): Promise<ExportResult> {
   const w = naturalWidth || image.naturalWidth || image.width
   const h = naturalHeight || image.naturalHeight || image.height
   if (!w || !h) {
@@ -111,7 +113,7 @@ export async function exportMemeToPng({
   // will throw a SecurityError — surface that as a clear message.
   try {
     ctx.drawImage(image, 0, 0, w, h)
-  } catch (err) {
+  } catch {
     throw new Error(
       'Template image could not be drawn to canvas due to CORS restrictions. Try a different template or reload the page.',
     )
@@ -122,9 +124,15 @@ export async function exportMemeToPng({
   }
 
   const dataUrl = canvas.toDataURL('image/png')
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (b) resolve(b)
+      else reject(new Error('Could not generate PNG blob'))
+    }, 'image/png')
+  })
   const safeBase = fileBaseName.replace(/[^a-z0-9-_]+/gi, '_').toLowerCase() || 'meme'
   const filename = `${safeBase}_${Date.now()}.png`
-  return { dataUrl, filename }
+  return { dataUrl, filename, width: w, height: h, blob }
 }
 
 export function triggerDownload(dataUrl: string, filename: string) {
@@ -134,4 +142,90 @@ export function triggerDownload(dataUrl: string, filename: string) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
+}
+
+export function buildEditorShareUrl(memeId: string | null | undefined): string {
+  if (typeof window === 'undefined') return '/editor'
+  const base = `${window.location.origin}/editor`
+  if (!memeId) return base
+  return `${base}?template=${encodeURIComponent(memeId)}`
+}
+
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text) return false
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // fall through to the legacy path
+  }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    ta.style.pointerEvents = 'none'
+    document.body.appendChild(ta)
+    ta.select()
+    const ok = document.execCommand('copy')
+    document.body.removeChild(ta)
+    return ok
+  } catch {
+    return false
+  }
+}
+
+export async function copyImageBlobToClipboard(blob: Blob): Promise<boolean> {
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+    return false
+  }
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })])
+    return true
+  } catch {
+    return false
+  }
+}
+
+export type ShareMethod = 'native' | 'clipboard-image' | 'clipboard-link' | 'unsupported'
+
+export function detectShareSupport(): { native: boolean; clipboardImage: boolean } {
+  const native =
+    typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof navigator.canShare === 'function'
+  const clipboardImage =
+    typeof ClipboardItem !== 'undefined' && typeof navigator !== 'undefined' && !!navigator.clipboard?.write
+  return { native, clipboardImage }
+}
+
+export async function nativeShare(
+  blob: Blob,
+  filename: string,
+  text: string,
+  url: string,
+): Promise<'shared' | 'cancelled' | 'unsupported' | 'failed'> {
+  if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+    return 'unsupported'
+  }
+  const file = new File([blob], filename, { type: blob.type || 'image/png' })
+  const payload: ShareData = { text, url }
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      payload.files = [file]
+    }
+    await navigator.share(payload)
+    return 'shared'
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled'
+    // Some browsers throw if files aren't shareable — retry without files.
+    try {
+      await navigator.share({ text, url })
+      return 'shared'
+    } catch (err2) {
+      if (err2 instanceof DOMException && err2.name === 'AbortError') return 'cancelled'
+      return 'failed'
+    }
+  }
 }

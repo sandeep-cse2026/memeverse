@@ -19,6 +19,7 @@ export default function Header() {
         <nav className="hidden md:flex items-center gap-6" aria-label="Primary">
           <NavLink to="/" end className={linkClass}>Home</NavLink>
           <NavLink to="/gallery" className={linkClass}>Gallery</NavLink>
+          <NavLink to="/favorites" className={linkClass}>Favorites</NavLink>
           <NavLink to="/editor" className={linkClass}>Editor</NavLink>
         </nav>
         <div className="flex items-center gap-2">
