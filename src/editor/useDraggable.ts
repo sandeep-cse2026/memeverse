@@ -19,9 +19,15 @@ export function useDraggable({ onMove, onEnd, disabled }: UseDraggableOptions) {
     parent: HTMLElement | null
     rect: DOMRect | null
   }>({ pointerId: null, parent: null, rect: null })
+  // Track the latest disabled value so active drag handlers can bail.
+  const disabledRef = useRef(disabled)
+  useEffect(() => {
+    disabledRef.current = disabled
+  }, [disabled])
 
   const handleMove = useCallback(
     (ev: PointerEvent) => {
+      if (disabledRef.current) return
       const s = stateRef.current
       if (s.pointerId !== ev.pointerId || !s.parent || !s.rect) return
       const rect = s.rect
@@ -36,6 +42,7 @@ export function useDraggable({ onMove, onEnd, disabled }: UseDraggableOptions) {
 
   const handleUp = useCallback(
     (ev: PointerEvent) => {
+      if (disabledRef.current) return
       const s = stateRef.current
       if (s.pointerId !== ev.pointerId) return
       window.removeEventListener('pointermove', handleMove)
@@ -57,7 +64,7 @@ export function useDraggable({ onMove, onEnd, disabled }: UseDraggableOptions) {
 
   const onPointerDown = useCallback(
     (ev: React.PointerEvent<HTMLElement>) => {
-      if (disabled) return
+      if (disabledRef.current) return
       // Only left button or touch/pen.
       if (ev.pointerType === 'mouse' && ev.button !== 0) return
       ev.preventDefault()
@@ -75,7 +82,7 @@ export function useDraggable({ onMove, onEnd, disabled }: UseDraggableOptions) {
       window.addEventListener('pointerup', handleUp)
       window.addEventListener('pointercancel', handleUp)
     },
-    [disabled, handleMove, handleUp],
+    [handleMove, handleUp],
   )
 
   useEffect(() => {
