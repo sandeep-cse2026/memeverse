@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { Meme } from '../api/imgflip'
+import { useFavorites } from '../hooks/useFavorites'
+import FavoriteButton from './FavoriteButton'
 
 type Props = {
   meme: Meme
@@ -8,6 +11,8 @@ type Props = {
 export default function MemeCard({ meme }: Props) {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
+  const { has, toggle } = useFavorites()
+  const isFav = has(meme.id)
 
   return (
     <li className="group overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
@@ -34,14 +39,31 @@ export default function MemeCard({ meme }: Props) {
             }`}
           />
         )}
+        <div className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <FavoriteButton
+            active={isFav}
+            onToggle={() => toggle(meme.id)}
+            size="sm"
+            label={isFav ? `Remove ${meme.name} from favorites` : `Add ${meme.name} to favorites`}
+          />
+        </div>
       </div>
-      <div className="p-3">
-        <h2 className="line-clamp-1 text-sm font-medium" title={meme.name}>
-          {meme.name}
-        </h2>
-        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          {meme.width}×{meme.height} · {meme.box_count} boxes
-        </p>
+      <div className="flex items-start justify-between gap-2 p-3">
+        <div className="min-w-0">
+          <h2 className="line-clamp-1 text-sm font-medium" title={meme.name}>
+            {meme.name}
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            {meme.width}×{meme.height} · {meme.box_count} boxes
+          </p>
+        </div>
+        <Link
+          to={`/editor?template=${meme.id}`}
+          className="btn-ghost h-8 px-3 text-xs"
+          aria-label={`Use ${meme.name} in the editor`}
+        >
+          Use
+        </Link>
       </div>
     </li>
   )
