@@ -9,6 +9,16 @@
   body {
     @apply antialiased;
   }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer components {
@@ -23,5 +33,65 @@
   }
   .container-page {
     @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+}
+
+@layer utilities {
+  /* Heart burst particles shoot outward from the button center, then fade. */
+  @keyframes burst {
+    0% {
+      transform: translate(-50%, -50%) scale(0.6);
+      opacity: 0.9;
+    }
+    60% {
+      opacity: 0.9;
+    }
+    100% {
+      transform: translate(calc(-50% + var(--burst-x, 0px)), calc(-50% + var(--burst-y, 0px))) scale(0.4);
+      opacity: 0;
+    }
+  }
+  .animate-burst {
+    animation: burst 360ms ease-out forwards;
+  }
+
+  /* Staggered fade-up used by gallery / favorites grids. */
+  @keyframes mem-rise {
+    0% {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .mem-rise {
+    animation: mem-rise 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Toast slide-in from the top. */
+  @keyframes mem-toast-in {
+    0% {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .mem-toast-in {
+    animation: mem-toast-in 220ms ease-out both;
+  }
+
+  /* Subtle "pop" used when the badge increments. */
+  @keyframes mem-pop {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
+  .mem-pop {
+    animation: mem-pop 280ms ease-out;
   }
 }
