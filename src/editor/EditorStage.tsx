@@ -24,6 +24,9 @@ export default function EditorStage({ template, boxes, selectedId, onSelect, onM
     setImageError(null)
   }, [template?.url])
 
+  // Render in z-order so higher-zIndex boxes paint on top.
+  const orderedBoxes = [...boxes].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+
   return (
     <div
       ref={stageRef}
@@ -66,7 +69,7 @@ export default function EditorStage({ template, boxes, selectedId, onSelect, onM
                 {imageError}
               </div>
             )}
-            {boxes.map((box) => (
+            {orderedBoxes.map((box) => (
               <DraggableText
                 key={box.id}
                 box={box}
@@ -114,36 +117,72 @@ type DraggableTextProps = {
 
 function DraggableText({ box, selected, onSelect, onMove }: DraggableTextProps) {
   const text = box.uppercase ? box.text.toUpperCase() : box.text
-  const { onPointerDown } = useDraggable({ onMove })
+  const { onPointerDown } = useDraggable({ onMove, disabled: box.locked })
   const align = box.align
+  const vertical = box.verticalAlign
+  const hasRotation = box.rotation !== 0
+  const hasBackground = !!box.backgroundColor && box.backgroundOpacity > 0
+  const fontStyle = box.italic ? 'italic' : 'normal'
+
+  // Horizontal / vertical offset chosen so the box anchor lands on (x%, y%).
+  // - align 'left'   -> left edge is anchor (translate 0)
+  // - align 'right'  -> right edge is anchor (translate -100% in x)
+  // - align 'center' -> center is anchor (translate -50% in x)
+  // Same shape for vertical.
+  const tx = align === 'left' ? '0%' : align === 'right' ? '-100%' : '-50%'
+  const ty = vertical === 'top' ? '0%' : vertical === 'bottom' ? '-100%' : '-50%'
 
   return (
     <div
-      onPointerDown={onPointerDown}
+      onPointerDown={box.locked ? undefined : onPointerDown}
       onClick={(e) => {
         e.stopPropagation()
         onSelect()
       }}
-      className={`group absolute -translate-x-1/2 -translate-y-1/2 cursor-move px-2 py-1 transition ${
-        align === 'left' ? 'translate-x-0' : align === 'right' ? '-translate-x-full' : '-translate-x-1/2'
-      } ${selected ? 'outline outline-2 outline-indigo-500 outline-offset-2' : 'outline-none'}`}
+      className={`group absolute ${
+        box.locked ? 'cursor-default' : 'cursor-move'
+      } px-2 py-1 transition ${selected ? 'outline outline-2 outline-indigo-500 outline-offset-2' : 'outline-none'} ${
+        box.locked ? 'opacity-95' : ''
+      }`}
       style={{
         left: `${box.x}%`,
         top: `${box.y}%`,
         maxWidth: `${box.maxWidth}%`,
         textAlign: align,
+        transform: `translate(${tx}, ${ty})${hasRotation ? ` rotate(${box.rotation}deg)` : ''}`,
+        transformOrigin: 'center center',
+        zIndex: box.zIndex || 0,
       }}
     >
+      {hasBackground && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            backgroundColor: box.backgroundColor,
+            opacity: box.backgroundOpacity,
+            borderRadius: `${box.backgroundRadius}cqi`,
+            // Expand so the highlight box hugs the text glyphs.
+            transform: `scale(${1 + (box.backgroundPadding / 100) * 2})`,
+            transformOrigin: 'center',
+          }}
+        />
+      )}
       <span
-        className="block whitespace-pre-wrap break-words leading-tight"
+        className="relative block whitespace-pre-wrap break-words leading-tight"
         style={{
           fontFamily: box.fontFamily,
+          fontStyle,
           fontSize: `${box.fontSize}cqi`,
           fontWeight: box.fontWeight,
           color: box.color,
           WebkitTextStroke: `${box.strokeWidth * 0.4}px ${box.strokeColor}`,
           paintOrder: 'stroke fill',
-          lineHeight: 1.05,
+          lineHeight: box.lineHeight,
+          letterSpacing: `${box.letterSpacing}em`,
+          textShadow: box.shadowColor
+            ? `${(box.shadowOffsetX / 100) * box.fontSize}cqi ${(box.shadowOffsetY / 100) * box.fontSize}cqi ${(box.shadowBlur / 100) * box.fontSize}cqi ${box.shadowColor}`
+            : 'none',
         }}
       >
         {text || (

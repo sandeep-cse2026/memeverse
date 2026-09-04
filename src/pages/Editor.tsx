@@ -149,12 +149,28 @@ export default function Editor() {
     setBoxes((prev) => {
       const source = prev.find((b) => b.id === id)
       if (!source) return prev
+      const maxZ = prev.reduce((m, b) => Math.max(m, b.zIndex || 0), 0)
       const dup = createTextBox({
         ...source,
         x: Math.min(95, source.x + 5),
         y: Math.min(95, source.y + 5),
+        zIndex: maxZ + 1,
       })
       return [...prev, dup]
+    })
+  }, [])
+
+  const bringForward = useCallback((id: string) => {
+    setBoxes((prev) => {
+      const maxZ = prev.reduce((m, b) => Math.max(m, b.zIndex || 0), 0)
+      return prev.map((b) => (b.id === id ? { ...b, zIndex: maxZ + 1 } : b))
+    })
+  }, [])
+
+  const sendBackward = useCallback((id: string) => {
+    setBoxes((prev) => {
+      const minZ = prev.reduce((m, b) => Math.min(m, b.zIndex || 0), 0)
+      return prev.map((b) => (b.id === id ? { ...b, zIndex: minZ - 1 } : b))
     })
   }, [])
 
@@ -386,6 +402,8 @@ export default function Editor() {
             onAdd={addBox}
             onDelete={deleteBox}
             onDuplicate={duplicateBox}
+            onBringForward={bringForward}
+            onSendBackward={sendBackward}
           />
           <TemplatePicker
             memes={memes}

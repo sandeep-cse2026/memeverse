@@ -7,7 +7,7 @@ Mem is a React + TypeScript single-page app for curating, annotating, and revisi
 ## ✨ Features
 
 - **Gallery** — Browse the full Imgflip meme catalog with a responsive grid, lazy-loaded previews, and graceful fallbacks for unavailable images.
-- **Editor** — Pick a template, add draggable text boxes, customize font size/color/outline, and export to PNG.
+- **Editor** — Pick a template, add draggable text boxes, customize font, weight, italic, color, outline, letter spacing, line height, rotation, drop shadow, highlight box, and z-order — then export to PNG. One-click style presets (Classic Impact, Outline only, Highlight, Subtitle, Soft glow, Tilted, Wide spaced) and a 9-anchor snap grid make layout effortless.
 - **Favorites** — Heart any template to keep it in a dedicated, always-synced Favorites view. A live badge in the header tracks your count and pops on every change.
 - **Recently used** — The editor remembers the last 6 templates you opened; surface them in a "Recent" rail for one-click return.
 - **Share & export** — One-click image copy, link copy, native share, and PNG download, all wrapped with celebratory toast microcopy.
@@ -110,6 +110,7 @@ npm run preview
 - **Theme detection** — A small inline script in `index.html` reads the saved theme (or system preference) and applies the `dark` class before paint to avoid a flash.
 - **Reduced motion** — All custom animations (`mem-rise`, `mem-pop`, `mem-toast-in`, `animate-burst`) are gated by the `prefers-reduced-motion: reduce` media query, so users with motion sensitivity get an instant experience.
 - **Meme data** — `src/api/imgflip.ts` calls the public Imgflip API; the result is memoized in `useMemes` to keep the editor and gallery in sync.
+- **Editor text engine** — `TextBox` carries font, weight, italic, color, outline, letter spacing, line height, rotation, drop shadow, highlight box, vertical alignment, and z-index. `canvasExport.ts` mirrors the live preview 1:1 so PNG output matches what the user sees.
 
 ## 🤝 Contributing
 
