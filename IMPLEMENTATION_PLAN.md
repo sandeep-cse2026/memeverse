@@ -1,32 +1,29 @@
-# Implementation Plan - MEM-5
-**Goal:** Polish Mem with **addictive UX** — small, delightful touches that reward users for the actions we want them to take (favoriting, sharing, returning). Nothing here changes the product surface; it just makes the surface feel alive.
+# Implementation Plan - MEM-6
+**Goal:** Add **drafts & auto-saves** to the meme editor so users never lose work — a quiet, persistent safety net that also lets them name and revisit in-progress memes.
 
-**Context:** MEM-4 shipped Share + Favorites. MEM-5 layers the polish that makes those features feel rewarding to use:
-- **Favorites count badge** in the header so users always see the value they've built up, and it pops on change.
-- **Particle burst** when the heart is activated on a card.
-- **Staggered card rise** on gallery / favorites / recents so lists feel alive instead of popping in all at once.
-- **Keyboard shortcut `F`** in the editor to toggle favorite for the current template (with a visible `F` chip).
-- **Recently used templates** in the editor sidebar — last 6 templates you've opened, with one click to return.
-- **Toast microcopy + slide-in animation** — share/copy/download/favorite toasts use check/error icons, slide in from the top, and the copy rewards the user.
-- **Re-entry CTA on Home** — once the user has favorites or recents, the home hero shows a "Your N favorites" or "Jump back in" link so they bounce back to the editor.
-- **Reduced-motion** safety net so the new animations respect the OS preference.
+**Context:** MEM-5 shipped the "addictive UX" polish (badge, burst, recents, toasts, etc.). MEM-6 layers the *durability* dimension on top: editing a meme should feel as safe as writing in a notes app. Every keystroke, drag, and template swap is captured (debounced) to localStorage, and the user can pin named drafts they want to come back to.
+
+What's new:
+- **Debounced auto-save** of the current editing session (template + boxes) on every change, flushed on unmount so a navigation never drops keystrokes.
+- **A "Drafts" side panel** in the editor with restore, rename, delete, overwrite, and clear-all actions.
+- **Inline save-status indicator** ("Saving… / Saved Xs ago") in the editor header so users know their work is being captured.
+- **"+ Save"** lets users pin a named copy; same-name saves update the existing draft instead of creating duplicates.
+- **Auto-resume on reload** — the most recent auto-saved session is restored on editor mount, so a refresh lands the user right back in their edit.
+- **Cross-tab sync** — drafts and the active session broadcast changes via a custom `window` event so multiple tabs stay in sync.
 
 **Steps:**
-1. Add `src/hooks/useRecentTemplates.ts` — persisted most-recent-first list of meme IDs, capped at 6, with a `mem:recents:changed` window event so multiple components stay in sync.
-2. Update `src/components/Header.tsx` to read `useFavorites()`, show a rose-tinted numeric badge on the Favorites nav link (with a `mem-pop` animation on every change).
-3. Update `src/components/FavoriteButton.tsx` to fire six colored particles outward when the heart goes from inactive → active (uses CSS `@keyframes burst`).
-4. Update `src/components/MemeCard.tsx` to apply the `mem-rise` animation so each card rises into place.
-5. Update `src/index.css` to add `mem-rise`, `mem-pop`, `mem-toast-in`, and `animate-burst` keyframes, plus a `prefers-reduced-motion` override.
-6. Update `src/pages/Editor.tsx` to:
-   - mount the new `useRecentTemplates` hook and call `bump(id)` whenever a template is selected or resolved from the URL/draft
-   - add a window `keydown` listener so pressing `F` toggles the current template's favorite (ignored while typing in inputs/textareas)
-   - show a small `F` kbd chip on the Favorite button as a discoverability hint
-   - upgrade the success/error toasts to slide in, with check / alert icons, and friendlier copy ("Shared! Off it goes 🚀", "Image copied — paste it anywhere!", "Link copied — share it with a friend!", "Downloaded! Check your folder.", "Saved! Your meme is on its way to your downloads.")
-7. Update `src/editor/TemplatePicker.tsx` to render a "Recent" section above the search when there are recents (skipped while searching), intersecting against the loaded `memes` list.
-8. Update `src/editor/ShareMenu.tsx` microcopy so every success path is celebratory.
-9. Update `src/pages/Home.tsx` so once the user has favorites or recents, the hero gains a third CTA reading "Your N favorites" (or "Jump back in" if only recents).
-10. Update `IMPLEMENTATION_PLAN.md` to MEM-5 and verify with `npm run build`.
+1. Add `src/hooks/useDrafts.ts` — a small, self-contained hook that owns the named-draft list (`mem:drafts:v1`) and the active auto-saved session (`mem:drafts:session:v1`). Provides `autosave`, `saveNamed`, `updateNamed`, `rename`, `remove`, `clearAll`, and `clearSession`. Auto-save is debounced at 600ms and the pending payload is ref-stored so the latest values always win. A custom `mem:drafts:changed` and `mem:drafts:session:changed` event keeps multiple components in sync, and a `storage` handler keeps tabs in sync.
+2. Add `src/editor/SaveStatusIndicator.tsx` — a tiny pill that shows `Saving… / Saved Xs ago / Auto-save ready`. Uses an `aria-live="polite"` region so screen readers announce save progress.
+3. Add `src/editor/DraftsPanel.tsx` — the side panel UI: list of named drafts with template thumbnails, an inline rename input, per-row delete, an inline "Save as" form, an "Overwrite this draft" CTA when the open draft has unsaved edits, and a "Clear all drafts" link.
+4. Update `src/pages/Editor.tsx` to:
+   - replace the previous one-shot `mem:editor:draft:v1` save with the new `useDrafts` hook (debounced auto-save on every `template` / `boxes` change; flushed on unmount)
+   - track `activeDraftId` and `activeDirty` so we can show the "Overwrite" affordance
+   - re-hydrate the most recent auto-saved session on mount, after the meme catalog has loaded (or fall back to URL `?template=` / nav-state templateId if those win)
+   - mount the `DraftsPanel` and `SaveStatusIndicator`
+   - flash a small `mem-toast-in` indigo banner when a draft is saved, restored, or updated
+5. Update `src/index.css` if needed (no new keyframes required — the existing `mem-toast-in` covers the draft banner).
+6. Update `IMPLEMENTATION_PLAN.md` (this file) and `README.md` to document the new feature.
 
-**Files to change:** IMPLEMENTATION_PLAN.md, src/hooks/useRecentTemplates.ts (new), src/components/Header.tsx, src/components/FavoriteButton.tsx, src/components/MemeCard.tsx, src/index.css, src/pages/Editor.tsx, src/editor/TemplatePicker.tsx, src/editor/ShareMenu.tsx, src/pages/Home.tsx.
+**Files to change:** IMPLEMENTATION_PLAN.md, README.md, src/hooks/useDrafts.ts (new), src/editor/SaveStatusIndicator.tsx (new), src/editor/DraftsPanel.tsx (new), src/pages/Editor.tsx.
 
-**Risks/Tests:** `npm run build` must succeed. Animations are pure CSS, gated by `prefers-reduced-motion`. The recents list caps at 6 entries and uses `useMemo` to intersect against the loaded `memes` (so stale IDs disappear silently). The `F` shortcut is suppressed inside inputs/textareas/contenteditable and when modifier keys are held, so it never hijacks form typing. The badge `pop` uses a React `key` change rather than re-mounting unrelated nodes, keeping animations cheap.
+**Risks/Tests:** `npm run build` must succeed (tsc + vite build). The auto-save debounce (600ms) keeps localStorage writes cheap on long drag operations. `MAX_NAMED_DRAFTS = 50` caps total storage. The session is written separately from named drafts so a refresh always restores the latest edits even before the user picks a name. Restore gracefully degrades when a draft's template is no longer in the catalog — the user sees a "no longer available" toast and the editor stays where it was. The save-status pill is wrapped in `role="status" aria-live="polite"` for screen readers and the "Saving…" pulse is also covered by the existing `prefers-reduced-motion` rule, so users with motion sensitivity see the static "Saved" state instead.
