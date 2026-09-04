@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useMemes } from '../hooks/useMemes'
 import { useFavorites } from '../hooks/useFavorites'
@@ -9,34 +9,10 @@ import TemplatePicker from '../editor/TemplatePicker'
 import ShareMenu from '../editor/ShareMenu'
 import { exportMemeToPng, triggerDownload } from '../editor/canvasExport'
 import { useRecentTemplates } from '../hooks/useRecentTemplates'
+import { useDrafts, type Draft } from '../hooks/useDrafts'
+import DraftsPanel from '../editor/DraftsPanel'
+import SaveStatusIndicator from '../editor/SaveStatusIndicator'
 import type { Meme } from '../api/imgflip'
-
-const STORAGE_KEY = 'mem:editor:draft:v1'
-
-type DraftState = {
-  templateId: string | null
-  boxes: TextBox[]
-}
-
-function loadDraft(): DraftState | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as DraftState
-    if (!parsed || !Array.isArray(parsed.boxes)) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function saveDraft(state: DraftState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    // ignore quota errors
-  }
-}
 
 function getTemplateIdFromQuery(): string | null {
   if (typeof window === 'undefined') return null
@@ -44,25 +20,45 @@ function getTemplateIdFromQuery(): string | null {
   return params.get('template')
 }
 
+function safeBoxes(boxes: TextBox[] | undefined | null): TextBox[] {
+  return Array.isArray(boxes) ? boxes : []
+}
+
 export default function Editor() {
   const { memes, status, error, fromCache, reload } = useMemes()
   const { isFavorite, toggle: toggleFavorite } = useFavorites()
   const { recents, bump: bumpRecent } = useRecentTemplates()
+  const drafts = useDrafts()
   const location = useLocation()
   const initialTemplateId =
     (location.state as { templateId?: string } | null)?.templateId ??
     getTemplateIdFromQuery()
-  const draft = useMemo(() => loadDraft(), [])
+  const sessionDraft = drafts.session
+
+  // The id of the named draft that the user has currently opened in the
+  // editor. When the user restores a draft, this gets set to that draft's
+  // id; when they pick a fresh template, we clear it.
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null)
+  // True when the in-memory edits have diverged from the saved named
+  // draft, so we can disable / hide the "Overwrite" affordance.
+  const [activeDirty, setActiveDirty] = useState(false)
+  // A small toast banner for "draft loaded" / "draft saved" feedback.
+  const [draftToast, setDraftToast] = useState<string | null>(null)
+
+  // `hydrated` is true once we've tried to load the user back into their
+  // last session. It is intentionally a ref so we only run the bootstrap
+  // once even if the dependencies change later.
+  const hydratedRef = useRef(false)
 
   const [template, setTemplate] = useState<Meme | null>(null)
-  const [boxes, setBoxes] = useState<TextBox[]>(() => draft?.boxes ?? defaultBoxesFor(null))
+  const [boxes, setBoxes] = useState<TextBox[]>(() => defaultBoxesFor(null))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const stageRef = useRef<HTMLDivElement | null>(null)
-  const templateResolvedRef = useRef(false)
   const noticeTimerRef = useRef<number | null>(null)
+  const draftToastTimerRef = useRef<number | null>(null)
   const toastKeyRef = useRef(0)
   const [toastKey, setToastKey] = useState(0)
 
@@ -74,36 +70,59 @@ export default function Editor() {
     noticeTimerRef.current = window.setTimeout(() => setNotice(null), 2400)
   }, [])
 
+  const flashDraftToast = useCallback((message: string) => {
+    setDraftToast(message)
+    if (draftToastTimerRef.current) window.clearTimeout(draftToastTimerRef.current)
+    draftToastTimerRef.current = window.setTimeout(() => setDraftToast(null), 2200)
+  }, [])
+
   useEffect(() => {
     return () => {
       if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
+      if (draftToastTimerRef.current) window.clearTimeout(draftToastTimerRef.current)
     }
   }, [])
 
-  // Pick a template from the loaded memes once they arrive (only the first time
-  // we resolve the initial template — user selections win after that).
+  // Resolve the initial template / draft exactly once, when we have enough
+  // information. Priority: URL `?template=` -> nav-state templateId -> most
+  // recent auto-saved session -> nothing.
   useEffect(() => {
-    if (templateResolvedRef.current) return
-    if (memes.length === 0) return
-    const wantedId = initialTemplateId ?? draft?.templateId ?? null
-    if (wantedId) {
-      const found = memes.find((m) => m.id === wantedId) ?? null
+    if (hydratedRef.current) return
+    if (memes.length === 0 && !sessionDraft && !initialTemplateId) return
+    hydratedRef.current = true
+
+    if (initialTemplateId) {
+      const found = memes.find((m) => m.id === initialTemplateId)
       if (found) {
         setTemplate(found)
-        setBoxes((prev) => (prev.length > 0 ? prev : defaultBoxesFor(found)))
+        setBoxes(defaultBoxesFor(found))
         bumpRecent(found.id)
+        return
       }
-    } else if (template === null) {
-      // No template requested and no template chosen — start blank by default.
-      setBoxes((prev) => (prev.length > 0 ? prev : defaultBoxesFor(null)))
     }
-    templateResolvedRef.current = true
-  }, [memes, initialTemplateId, draft?.templateId, template, bumpRecent])
+    if (sessionDraft) {
+      // Re-hydrate the most recent auto-saved session, if we can.
+      const initialBoxes = safeBoxes(sessionDraft.boxes)
+      const tplId = sessionDraft.templateId
+      if (tplId) {
+        const found = memes.find((m) => m.id === tplId)
+        if (found) {
+          setTemplate(found)
+          setBoxes(initialBoxes.length > 0 ? initialBoxes : defaultBoxesFor(found))
+          bumpRecent(found.id)
+          return
+        }
+      }
+      setTemplate(null)
+      setBoxes(initialBoxes.length > 0 ? initialBoxes : defaultBoxesFor(null))
+    }
+  }, [memes, initialTemplateId, sessionDraft, bumpRecent])
 
-  // Persist a small draft so the user doesn't lose work on a refresh.
+  // Auto-save the current state (debounced) so refreshes / navigations
+  // never lose more than ~600ms of work.
   useEffect(() => {
-    saveDraft({ templateId: template?.id ?? null, boxes })
-  }, [template, boxes])
+    drafts.autosave({ template, boxes })
+  }, [template, boxes, drafts])
 
   const selectTemplate = useCallback(
     (meme: Meme | null) => {
@@ -115,16 +134,57 @@ export default function Editor() {
         setBoxes(defaultBoxesFor(null))
       }
       setSelectedId(null)
+      setActiveDraftId(null)
+      setActiveDirty(false)
     },
     [bumpRecent],
   )
 
+  const restoreDraft = useCallback(
+    (draft: Draft) => {
+      const target = memes.find((m) => m.id === draft.templateId)
+      if (draft.templateId && !target) {
+        flashDraftToast('That draft’s template is no longer in the catalog.')
+        return
+      }
+      setTemplate(target ?? null)
+      setBoxes(draft.boxes.length > 0 ? draft.boxes : defaultBoxesFor(target ?? null))
+      setSelectedId(null)
+      setActiveDraftId(draft.id)
+      setActiveDirty(false)
+      if (target) bumpRecent(target.id)
+      // Force the autosave to mirror the restored state.
+      drafts.autosave({ template: target ?? null, boxes: draft.boxes })
+      flashDraftToast(`Loaded “${draft.name}”.`)
+    },
+    [memes, bumpRecent, drafts, flashDraftToast],
+  )
+
+  const handleSaveNewDraft = useCallback(
+    (name: string) => {
+      const draft = drafts.saveNamed(name, { template, boxes })
+      setActiveDraftId(draft.id)
+      setActiveDirty(false)
+      flashDraftToast(`Saved “${draft.name}”.`)
+    },
+    [drafts, template, boxes, flashDraftToast],
+  )
+
+  const handleUpdateActiveDraft = useCallback(() => {
+    if (!activeDraftId) return
+    drafts.updateNamed(activeDraftId, { template, boxes })
+    setActiveDirty(false)
+    flashDraftToast('Draft updated.')
+  }, [activeDraftId, drafts, template, boxes, flashDraftToast])
+
   const updateBox = useCallback((id: string, patch: Partial<TextBox>) => {
     setBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)))
+    setActiveDirty(true)
   }, [])
 
   const moveBox = useCallback((id: string, x: number, y: number) => {
     setBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, x, y } : b)))
+    setActiveDirty(true)
   }, [])
 
   const addBox = useCallback(() => {
@@ -138,11 +198,13 @@ export default function Editor() {
     })
     setBoxes((prev) => [...prev, newBox])
     setSelectedId(newBox.id)
+    setActiveDirty(true)
   }, [])
 
   const deleteBox = useCallback((id: string) => {
     setBoxes((prev) => prev.filter((b) => b.id !== id))
     setSelectedId((prevId) => (prevId === id ? null : prevId))
+    setActiveDirty(true)
   }, [])
 
   const duplicateBox = useCallback((id: string) => {
@@ -156,6 +218,7 @@ export default function Editor() {
       })
       return [...prev, dup]
     })
+    setActiveDirty(true)
   }, [])
 
   const getStageImage = useCallback((): HTMLImageElement | null => {
@@ -194,6 +257,7 @@ export default function Editor() {
   const handleReset = useCallback(() => {
     setBoxes(defaultBoxesFor(template))
     setSelectedId(null)
+    setActiveDirty(true)
   }, [template])
 
   const handleShareError = useCallback((message: string) => {
@@ -257,6 +321,7 @@ export default function Editor() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <SaveStatusIndicator status={drafts.status} lastSavedAt={drafts.lastSavedAt} />
           <button
             type="button"
             onClick={handleReset}
@@ -313,6 +378,31 @@ export default function Editor() {
           </button>
         </div>
       </header>
+
+      {draftToast && (
+        <div
+          role="status"
+          className="mem-toast-in mb-4 flex items-start gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-200"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="9" y1="13" x2="15" y2="13" />
+            <line x1="9" y1="17" x2="13" y2="17" />
+          </svg>
+          <span>{draftToast}</span>
+        </div>
+      )}
 
       {exportError && (
         <div
@@ -378,6 +468,17 @@ export default function Editor() {
         </div>
 
         <div className="flex flex-col gap-4">
+          <DraftsPanel
+            drafts={drafts.drafts}
+            activeDraftId={activeDraftId}
+            canUpdateActive={activeDirty}
+            onRestore={restoreDraft}
+            onRename={drafts.rename}
+            onRemove={drafts.remove}
+            onUpdateActive={handleUpdateActiveDraft}
+            onSaveNew={handleSaveNewDraft}
+            onClearAll={drafts.clearAll}
+          />
           <TextBoxControls
             boxes={boxes}
             selectedId={selectedId}

@@ -8,6 +8,7 @@ Mem is a React + TypeScript single-page app for curating, annotating, and revisi
 
 - **Gallery** — Browse the full Imgflip meme catalog with a responsive grid, lazy-loaded previews, and graceful fallbacks for unavailable images.
 - **Editor** — Pick a template, add draggable text boxes, customize font size/color/outline, and export to PNG.
+- **Drafts & auto-saves** — Every edit is captured to localStorage (debounced) and the editor resumes on reload; pin named drafts to revisit later from the side panel.
 - **Favorites** — Heart any template to keep it in a dedicated, always-synced Favorites view. A live badge in the header tracks your count and pops on every change.
 - **Recently used** — The editor remembers the last 6 templates you opened; surface them in a "Recent" rail for one-click return.
 - **Share & export** — One-click image copy, link copy, native share, and PNG download, all wrapped with celebratory toast microcopy.
@@ -106,7 +107,7 @@ npm run preview
 
 ## 🧠 How it works
 
-- **State persistence** — Favorites and recent templates are stored in `localStorage` (`mem:favorites` and `mem:recents`) and kept in sync across components via `window` events.
+- **State persistence** — Favorites, recent templates, and meme drafts are stored in `localStorage` (`mem:favorites:v1`, `mem:recents:v1`, `mem:drafts:v1`, `mem:drafts:session:v1`) and kept in sync across components via `window` events. The current editor session is auto-saved on a 600ms debounce so a refresh never loses more than a fraction of a second of work.
 - **Theme detection** — A small inline script in `index.html` reads the saved theme (or system preference) and applies the `dark` class before paint to avoid a flash.
 - **Reduced motion** — All custom animations (`mem-rise`, `mem-pop`, `mem-toast-in`, `animate-burst`) are gated by the `prefers-reduced-motion: reduce` media query, so users with motion sensitivity get an instant experience.
 - **Meme data** — `src/api/imgflip.ts` calls the public Imgflip API; the result is memoized in `useMemes` to keep the editor and gallery in sync.
