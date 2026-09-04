@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useMemes } from '../hooks/useMemes'
+import { useFavorites } from '../hooks/useFavorites'
 import { createTextBox, defaultBoxesFor, type TextBox } from '../editor/types'
 import EditorStage from '../editor/EditorStage'
 import TextBoxControls from '../editor/TextBoxControls'
 import TemplatePicker from '../editor/TemplatePicker'
+import ShareMenu from '../editor/ShareMenu'
 import { exportMemeToPng, triggerDownload } from '../editor/canvasExport'
 import type { Meme } from '../api/imgflip'
 
@@ -35,19 +37,42 @@ function saveDraft(state: DraftState) {
   }
 }
 
+function getTemplateIdFromQuery(): string | null {
+  if (typeof window === 'undefined') return null
+  const params = new URLSearchParams(window.location.search)
+  return params.get('template')
+}
+
 export default function Editor() {
   const { memes, status, error, fromCache, reload } = useMemes()
+  const { isFavorite, toggle: toggleFavorite } = useFavorites()
   const location = useLocation()
   const initialTemplateId =
-    (location.state as { templateId?: string } | null)?.templateId ?? null
+    (location.state as { templateId?: string } | null)?.templateId ??
+    getTemplateIdFromQuery()
   const draft = useMemo(() => loadDraft(), [])
 
   const [template, setTemplate] = useState<Meme | null>(null)
   const [boxes, setBoxes] = useState<TextBox[]>(() => draft?.boxes ?? defaultBoxesFor(null))
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const stageRef = useRef<HTMLDivElement | null>(null)
   const templateResolvedRef = useRef(false)
+  const noticeTimerRef = useRef<number | null>(null)
+
+  const flashNotice = useCallback((message: string) => {
+    setNotice(message)
+    if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = window.setTimeout(() => setNotice(null), 2400)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimerRef.current) window.clearTimeout(noticeTimerRef.current)
+    }
+  }, [])
 
   // Pick a template from the loaded memes once they arrive (only the first time
   // we resolve the initial template — user selections win after that).
@@ -125,15 +150,17 @@ export default function Editor() {
     })
   }, [])
 
+  const getStageImage = useCallback((): HTMLImageElement | null => {
+    const stage = stageRef.current
+    if (!stage) return null
+    return stage.querySelector<HTMLImageElement>('img[alt][crossorigin]')
+  }, [])
+
   const handleExport = useCallback(async () => {
     setExportError(null)
     setIsExporting(true)
     try {
-      // We need a loaded, CORS-enabled image to draw to canvas. Pull it from
-      // the current <img> in the stage so we get the same bytes as the preview.
-      const stageImg = document.querySelector<HTMLImageElement>(
-        'img[alt][crossorigin]',
-      )
+      const stageImg = getStageImage()
       if (!stageImg) {
         throw new Error('No template image is loaded yet.')
       }
@@ -153,12 +180,26 @@ export default function Editor() {
     } finally {
       setIsExporting(false)
     }
-  }, [boxes, template?.name])
+  }, [boxes, template?.name, getStageImage])
 
   const handleReset = useCallback(() => {
     setBoxes(defaultBoxesFor(template))
     setSelectedId(null)
   }, [template])
+
+  const handleShareError = useCallback((message: string) => {
+    setExportError(message)
+  }, [])
+
+  const handleShareNotice = useCallback(
+    (message: string) => {
+      setExportError(null)
+      flashNotice(message)
+    },
+    [flashNotice],
+  )
+
+  const currentIsFavorite = template ? isFavorite(template.id) : false
 
   return (
     <section className="container-page py-8">
@@ -180,6 +221,43 @@ export default function Editor() {
           >
             Reset
           </button>
+          {template && (
+            <button
+              type="button"
+              onClick={() => {
+                toggleFavorite(template.id)
+                flashNotice(currentIsFavorite ? 'Removed from favorites.' : 'Added to favorites.')
+              }}
+              aria-pressed={currentIsFavorite}
+              className={`btn-ghost h-9 px-3 text-sm ${
+                currentIsFavorite
+                  ? 'text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30'
+                  : ''
+              }`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill={currentIsFavorite ? 'currentColor' : 'none'}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+                className="mr-1.5 h-4 w-4"
+              >
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+              {currentIsFavorite ? 'Favorited' : 'Favorite'}
+            </button>
+          )}
+          <ShareMenu
+            template={template}
+            boxes={boxes}
+            getStageImage={getStageImage}
+            onError={handleShareError}
+            onNotice={handleShareNotice}
+          />
           <button
             type="button"
             onClick={handleExport}
@@ -192,20 +270,33 @@ export default function Editor() {
       </header>
 
       {exportError && (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+        >
           {exportError}
+        </div>
+      )}
+      {notice && !exportError && (
+        <div
+          role="status"
+          className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300"
+        >
+          {notice}
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <div>
-          <EditorStage
-            template={template}
-            boxes={boxes}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onMove={moveBox}
-          />
+          <div ref={stageRef}>
+            <EditorStage
+              template={template}
+              boxes={boxes}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onMove={moveBox}
+            />
+          </div>
           <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
             Tip: drag any text box to reposition it. Use the controls to change font, size, color, and stroke.
           </p>

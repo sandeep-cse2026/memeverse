@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Meme } from '../api/imgflip'
+import FavoriteButton from './FavoriteButton'
 
 type Props = {
   meme: Meme
@@ -41,6 +42,9 @@ export default function MemeCard({ meme }: Props) {
               }`}
             />
           )}
+          <div className="absolute right-2 top-2 z-10">
+            <FavoriteButton memeId={meme.id} className="h-8 w-8 px-0" />
+          </div>
           <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-end bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 transition-opacity group-hover:opacity-100">
             <span className="rounded-md bg-white/90 px-2 py-0.5 text-[11px] font-medium text-slate-700">
               Open in editor →
