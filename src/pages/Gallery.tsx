@@ -3,18 +3,20 @@ import MemeCard from '../components/MemeCard'
 import MemeGridSkeleton from '../components/MemeGridSkeleton'
 import EmptyState from '../components/EmptyState'
 import { useMemes } from '../hooks/useMemes'
+import { useFavorites } from '../hooks/useFavorites'
 
 export default function Gallery() {
   const { memes, status, error, fromCache, reload } = useMemes()
+  const { ids: favIds, has, clear } = useFavorites()
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<'name' | 'boxes' | 'size'>('name')
+  const [favOnly, setFavOnly] = useState(false)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const base = q
-      ? memes.filter((m) => m.name.toLowerCase().includes(q))
-      : memes
-    const sorted = [...base]
+    const base = favOnly ? memes.filter((m) => has(m.id)) : memes
+    const matched = q ? base.filter((m) => m.name.toLowerCase().includes(q)) : base
+    const sorted = [...matched]
     if (sort === 'name') {
       sorted.sort((a, b) => a.name.localeCompare(b.name))
     } else if (sort === 'boxes') {
@@ -23,9 +25,10 @@ export default function Gallery() {
       sorted.sort((a, b) => b.width * b.height - a.width * a.height)
     }
     return sorted
-  }, [memes, query, sort])
+  }, [memes, query, sort, favOnly, has])
 
   const isInitialLoading = status === 'loading' && memes.length === 0
+  const emptyForFavorites = favOnly && favIds.length === 0
 
   return (
     <section className="container-page py-12">
@@ -34,7 +37,9 @@ export default function Gallery() {
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Meme Gallery</h1>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
             {status === 'success'
-              ? `${memes.length} templates from Imgflip${fromCache ? ' (cached)' : ''}`
+              ? `${memes.length} templates from Imgflip${fromCache ? ' (cached)' : ''}${
+                  favIds.length ? ` · ${favIds.length} favorite${favIds.length === 1 ? '' : 's'}` : ''
+                }`
               : 'Loading templates from Imgflip…'}
           </p>
         </div>
@@ -77,6 +82,32 @@ export default function Gallery() {
           </label>
           <button
             type="button"
+            onClick={() => setFavOnly((v) => !v)}
+            aria-pressed={favOnly}
+            className={`btn h-9 px-3 text-sm ${
+              favOnly
+                ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60'
+                : 'btn-ghost'
+            }`}
+            title="Show only favorites"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill={favOnly ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+              className="mr-1.5 h-4 w-4"
+            >
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+            Favorites{favIds.length ? ` (${favIds.length})` : ''}
+          </button>
+          <button
+            type="button"
             onClick={reload}
             className="btn-ghost h-9 px-3 text-sm"
             aria-label="Refresh memes"
@@ -100,17 +131,27 @@ export default function Gallery() {
         </div>
       ) : isInitialLoading ? (
         <MemeGridSkeleton />
+      ) : emptyForFavorites ? (
+        <EmptyState
+          title="No favorites yet"
+          message="Tap the heart on any meme to save it here for quick access later."
+          action={{ label: 'Browse all memes', onClick: () => setFavOnly(false) }}
+        />
       ) : filtered.length === 0 ? (
         <EmptyState
           message={
             query
               ? `No memes match "${query}". Try a different search term.`
-              : 'No memes available right now.'
+              : favOnly
+                ? 'No favorites match the current search.'
+                : 'No memes available right now.'
           }
           action={
             query
               ? { label: 'Clear search', onClick: () => setQuery('') }
-              : { label: 'Refresh', onClick: reload }
+              : favOnly
+                ? { label: 'Show all memes', onClick: () => setFavOnly(false) }
+                : { label: 'Refresh', onClick: reload }
           }
         />
       ) : (
@@ -119,6 +160,18 @@ export default function Gallery() {
             <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
               Showing cached results — failed to refresh: {error}
             </p>
+          )}
+          {favOnly && favIds.length > 0 && (
+            <div className="mb-4 flex items-center justify-between rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+              <span>Showing {filtered.length} favorite{filtered.length === 1 ? '' : 's'}</span>
+              <button
+                type="button"
+                onClick={clear}
+                className="rounded px-2 py-0.5 text-xs font-medium hover:bg-rose-100 dark:hover:bg-rose-950/60"
+              >
+                Clear all
+              </button>
+            </div>
           )}
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((meme) => (
