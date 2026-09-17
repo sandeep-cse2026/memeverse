@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import ThemeToggle from './ThemeToggle'
 import { useFavorites } from '../hooks/useFavorites'
+import { useMemeHistory } from '../hooks/useMemeHistory'
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `text-sm font-medium transition-colors ${
@@ -12,16 +13,20 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export default function Header() {
   const { favorites } = useFavorites()
+  const { history } = useMemeHistory()
   const favCount = favorites.length
-  const prevCountRef = useRef(favCount)
+  const historyCount = history.length
+  const prevFavCountRef = useRef(favCount)
+  const prevHistoryCountRef = useRef(historyCount)
   const [popKey, setPopKey] = useState(0)
 
   useEffect(() => {
-    if (favCount !== prevCountRef.current) {
+    if (favCount !== prevFavCountRef.current || historyCount !== prevHistoryCountRef.current) {
       setPopKey((k) => k + 1)
-      prevCountRef.current = favCount
+      prevFavCountRef.current = favCount
+      prevHistoryCountRef.current = historyCount
     }
-  }, [favCount])
+  }, [favCount, historyCount])
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
@@ -43,6 +48,20 @@ export default function Header() {
                   className="mem-pop inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-semibold tabular-nums text-white shadow-sm ring-2 ring-white dark:ring-slate-950"
                 >
                   {favCount > 99 ? '99+' : favCount}
+                </span>
+              )}
+            </span>
+          </NavLink>
+          <NavLink to="/history" className={linkClass}>
+            <span className="inline-flex items-center gap-1.5">
+              History
+              {historyCount > 0 && (
+                <span
+                  key={popKey}
+                  aria-label={`${historyCount} saved`}
+                  className="mem-pop inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-500 px-1.5 text-[10px] font-semibold tabular-nums text-white shadow-sm ring-2 ring-white dark:ring-slate-950"
+                >
+                  {historyCount > 99 ? '99+' : historyCount}
                 </span>
               )}
             </span>

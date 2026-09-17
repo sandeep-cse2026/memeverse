@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useMemes } from '../hooks/useMemes'
 import { useFavorites } from '../hooks/useFavorites'
+import { useMemeHistory } from '../hooks/useMemeHistory'
 import { createTextBox, defaultBoxesFor, type TextBox } from '../editor/types'
 import EditorStage from '../editor/EditorStage'
 import TextBoxControls from '../editor/TextBoxControls'
@@ -48,10 +49,13 @@ export default function Editor() {
   const { memes, status, error, fromCache, reload } = useMemes()
   const { isFavorite, toggle: toggleFavorite } = useFavorites()
   const { recents, bump: bumpRecent } = useRecentTemplates()
+  const { save: saveToHistory } = useMemeHistory()
   const location = useLocation()
-  const initialTemplateId =
-    (location.state as { templateId?: string } | null)?.templateId ??
-    getTemplateIdFromQuery()
+  const locationState = location.state as
+    | { templateId?: string; historyId?: string; historyBoxes?: TextBox[] }
+    | null
+  const initialTemplateId = locationState?.templateId ?? getTemplateIdFromQuery()
+  const initialHistoryBoxes = locationState?.historyBoxes ?? null
   const draft = useMemo(() => loadDraft(), [])
 
   const [template, setTemplate] = useState<Meme | null>(null)
@@ -90,7 +94,12 @@ export default function Editor() {
       const found = memes.find((m) => m.id === wantedId) ?? null
       if (found) {
         setTemplate(found)
-        setBoxes((prev) => (prev.length > 0 ? prev : defaultBoxesFor(found)))
+        // If we're loading from history, use the saved boxes; otherwise use defaults or draft
+        if (initialHistoryBoxes && initialHistoryBoxes.length > 0) {
+          setBoxes(initialHistoryBoxes)
+        } else {
+          setBoxes((prev) => (prev.length > 0 ? prev : defaultBoxesFor(found)))
+        }
         bumpRecent(found.id)
       }
     } else if (template === null) {
@@ -98,7 +107,7 @@ export default function Editor() {
       setBoxes((prev) => (prev.length > 0 ? prev : defaultBoxesFor(null)))
     }
     templateResolvedRef.current = true
-  }, [memes, initialTemplateId, draft?.templateId, template, bumpRecent])
+  }, [memes, initialTemplateId, draft?.templateId, template, bumpRecent, initialHistoryBoxes])
 
   // Persist a small draft so the user doesn't lose work on a refresh.
   useEffect(() => {
@@ -294,6 +303,34 @@ export default function Editor() {
               <kbd className="ml-1.5 hidden rounded border border-slate-300 bg-slate-100 px-1 font-mono text-[10px] text-slate-500 sm:inline dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
                 F
               </kbd>
+            </button>
+          )}
+          {template && boxes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                saveToHistory(template, boxes)
+                flashNotice('Saved to history!')
+              }}
+              className="btn-ghost h-9 px-3 text-sm"
+              title="Save this meme to history"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+                className="mr-1.5 h-4 w-4"
+              >
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              Save to History
             </button>
           )}
           <ShareMenu

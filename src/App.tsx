@@ -5,6 +5,7 @@ import Home from './pages/Home'
 import Gallery from './pages/Gallery'
 import Editor from './pages/Editor'
 import Favorites from './pages/Favorites'
+import History from './pages/History'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/gallery" element={<Gallery />} />
           <Route path="/favorites" element={<Favorites />} />
+          <Route path="/history" element={<History />} />
           <Route path="/editor" element={<Editor />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

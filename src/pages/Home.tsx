@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom'
 import { useFavorites } from '../hooks/useFavorites'
 import { useRecentTemplates } from '../hooks/useRecentTemplates'
+import { useMemeHistory } from '../hooks/useMemeHistory'
 
 export default function Home() {
   const { favorites } = useFavorites()
   const { recents } = useRecentTemplates()
-  const hasHistory = favorites.length > 0 || recents.length > 0
+  const { history } = useMemeHistory()
+  const hasHistory = favorites.length > 0 || recents.length > 0 || history.length > 0
 
   return (
     <section>
@@ -24,11 +26,19 @@ export default function Home() {
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link to="/editor" className="btn-primary">Start creating</Link>
             <Link to="/gallery" className="btn-ghost">Browse gallery</Link>
-            {hasHistory && (
+            {hasHistory && favorites.length > 0 && (
               <Link to="/favorites" className="btn-ghost">
-                {favorites.length > 0
-                  ? `Your ${favorites.length} favorite${favorites.length === 1 ? '' : 's'}`
-                  : 'Jump back in'}
+                Your {favorites.length} favorite{favorites.length === 1 ? '' : 's'}
+              </Link>
+            )}
+            {hasHistory && history.length > 0 && (
+              <Link to="/history" className="btn-ghost">
+                Your {history.length} saved meme{history.length === 1 ? '' : 's'}
+              </Link>
+            )}
+            {hasHistory && favorites.length === 0 && history.length === 0 && recents.length > 0 && (
+              <Link to="/editor" className="btn-ghost">
+                Jump back in
               </Link>
             )}
           </div>
